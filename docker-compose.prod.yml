@@ -1,0 +1,76 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: deron_postgres_prod
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: drone_db
+    volumes:
+      - deron_postgres_data_prod:/var/lib/postgresql/data
+
+  permissions_app:
+    build:
+      context: ./permissions_app
+    container_name: deron_permissions_app_prod
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@db:5432/drone_db
+    depends_on:
+      - db
+    volumes:
+      - ./permissions_app:/app
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.0
+    container_name: deron_keycloak_prod
+    restart: always
+    command: start-dev --features=organization --http-relative-path=/kc
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://db:5432/drone_db
+      - KC_DB_USERNAME=postgres
+      - KC_DB_PASSWORD=postgrespassword
+      - KC_HTTP_RELATIVE_PATH=/kc
+    depends_on:
+      - db
+
+  bff_app:
+    build:
+      context: ./bff_app
+    container_name: deron_bff_app_prod
+    restart: always
+    environment:
+      - KEYCLOAK_SERVER_URL=https://rlab-drone-establish.egov.uni-koblenz.de
+      - KEYCLOAK_REALM=deron-realm
+      - KEYCLOAK_CLIENT_ID=deron-bff
+      - KEYCLOAK_CLIENT_SECRET=HExOK0mQz3uQno684TSlkglhW3N61qXzOksdzmJ3RDUUdRm5FBV1Hac4fHgbGjPDcUWmpXcLbXfCG3KqTf8hI5
+      - SESSION_SECRET_KEY=dev-bff-session-secret-replace-in-production-k7x9m2
+      - PERMISSIONS_API_URL=http://permissions_app:8000
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@db:5432/drone_db
+    volumes:
+      - ./bff_app:/app
+    depends_on:
+      - keycloak
+      - permissions_app
+
+  frontend:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    container_name: deron_frontend_prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+    depends_on:
+      - bff_app
+
+volumes:
+  deron_postgres_data_prod:
