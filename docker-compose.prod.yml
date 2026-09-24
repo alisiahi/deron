@@ -54,7 +54,7 @@ services:
       - KEYCLOAK_INTERNAL_URL=http://keycloak:8080/kc
       - KEYCLOAK_REALM=deron-realm
       - KEYCLOAK_CLIENT_ID=deron-bff
-      - KEYCLOAK_CLIENT_SECRET=HExOK0mQz3uQno684TSlkglhW3N61qXzOksdzmJ3RDUUdRm5FBV1Hac4fHgbGjPDcUWmpXcLbXfCG3KqTf8hI5
+      - KEYCLOAK_CLIENT_SECRET=NfDtukro3k2NnMITyQa7NohBQbR8LDX21xp17yhUhlKz9atCqF6CVU8nfHgO3fcGKWNyAnLOxd55n898zdqJKh
       - SESSION_SECRET_KEY=dev-bff-session-secret-replace-in-production-k7x9m2
       - PERMISSIONS_API_URL=http://permissions_app:8000
       - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@db:5432/drone_db
