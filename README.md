@@ -9,11 +9,12 @@ A complete, production-grade reference implementation for Identity & Access Mana
 2. [Component Breakdown](#component-breakdown)
 3. [How to Run Locally (Quickstart)](#how-to-run-locally-quickstart)
 4. [Keycloak Setup Instructions](#keycloak-setup-instructions)
-5. [How the Auth & Session Flow Works](#how-the-auth--session-flow-works)
-6. [Multi-VM Production Architecture Guide](#multi-vm-production-architecture-guide)
-7. [Connecting Other FastAPI Microservices to the BFF](#connecting-other-fastapi-microservices-to-the-bff)
-8. [Integrating Auth into the Existing Flutter Web Production App](#integrating-auth-into-the-existing-flutter-web-production-app)
-9. [Security Best Practices](#security-best-practices)
+5. [Updating Client Secret in Running Containers](#updating-client-secret-in-running-containers)
+6. [How the Auth & Session Flow Works](#how-the-auth--session-flow-works)
+7. [Multi-VM Production Architecture Guide](#multi-vm-production-architecture-guide)
+8. [Connecting Other FastAPI Microservices to the BFF](#connecting-other-fastapi-microservices-to-the-bff)
+9. [Integrating Auth into the Existing Flutter Web Production App](#integrating-auth-into-the-existing-flutter-web-production-app)
+10. [Security Best Practices](#security-best-practices)
 
 ---
 
@@ -113,27 +114,58 @@ Open **`http://localhost:8080`** in Google Chrome.
 
 ## Keycloak Setup Instructions
 
-1. Open **[http://localhost:8180](http://localhost:8180)** and log in with **`admin`** / **`admin`**.
-2. Click the realm dropdown (top left) $\rightarrow$ **Create Realm** $\rightarrow$ Name: **`deron-realm`**.
-3. Navigate to **Clients** $\rightarrow$ **Create client**:
-   - **Client ID**: `deron-bff`
-   - **Client Authentication**: **ON** (Confidential client)
-   - **Authorization**: **OFF**
-   - **Authentication flow**: Standard flow (Authorization Code Flow)
-   - **Root URL**: `http://localhost:8080`
-   - **Home URL**: `http://localhost:8080/`
-   - **Valid redirect URIs**: `http://localhost:8001/auth/callback`, `http://localhost:8080/*`
-   - **Valid post logout redirect URIs**: `http://localhost:8080/*`
-   - **Web origins**: `+` (or `http://localhost:8080`, `http://localhost:8001`)
-4. Save the client, open the **Credentials** tab, copy the **Client Secret**, and paste it into `bff_app/.env`:
-   ```env
-   KEYCLOAK_CLIENT_SECRET=<copied_client_secret>
-   SESSION_SECRET_KEY=dev-bff-session-secret-replace-in-production-k7x9m2
+### Accessing the Keycloak Admin Dashboard
+- **Local Development**: `http://localhost:8180`
+- **Production / VM**: `https://<YOUR_DOMAIN>/kc/admin/` *(e.g. `https://rlab-drone-establish.egov.uni-koblenz.de/kc/admin/`)*
+- **Default Credentials**: `admin` / `admin`
+
+---
+
+### Dashboard Settings Template (Replace `<DOMAIN>` with your domain or `localhost:8080`)
+
+1. Log in to the Admin Dashboard and create a realm:
+   - **Realm Name**: `deron-realm` (or `kiwi-realm`)
+
+2. Go to **Clients** $\rightarrow$ **Create client**:
+
+| Field | Value | Purpose |
+|---|---|---|
+| **Client ID** | `deron-bff` | Unique client identifier |
+| **Client Authentication** | **ON** | Makes client confidential (requires secret) |
+| **Proof Key for Code Exchange (PKCE)** | **ON** (Method `S256`) | Required PKCE enforcement for code exchange |
+| **Authorization** | **OFF** | Standard OIDC authentication only |
+| **Authentication flow** | Standard Flow | Enables Authorization Code Flow |
+| **Root URL** | `https://<DOMAIN>` | Primary base URL of frontend |
+| **Home URL** | `https://<DOMAIN>/` | Default landing page |
+| **Valid redirect URIs** | `https://<DOMAIN>/auth/callback`<br>`https://<DOMAIN>/*` | Allowed authentication callback endpoints |
+| **Valid post logout redirect URIs** | `https://<DOMAIN>/*` | Allowed post-logout return URIs |
+| **Web origins** | `+` *(or `https://<DOMAIN>`)* | Allows CORS origins matching redirect URIs |
+
+3. Click **Save**, open the **Credentials** tab, and copy the **Client Secret**.
+
+4. Go to **Users** $\rightarrow$ **Add user** (e.g. `testuser`) and set a password under the **Credentials** tab (turn off **Temporary**).
+
+5. (Optional) Under **Organizations**, create an organization named `adminsop` and assign your test user to it for Admin Portal authorization testing.
+
+---
+
+## Updating Client Secret in Running Containers
+
+If you regenerate or change the Client Secret in the Keycloak Admin Dashboard, update the running BFF container without needing a full rebuild:
+
+### In Local Development:
+1. Update `KEYCLOAK_CLIENT_SECRET` in `bff_app/.env`.
+2. Restart the BFF container:
+   ```bash
+   docker compose restart bff_app
    ```
-5. Navigate to **Users** $\rightarrow$ **Add user**:
-   - Create a test user (e.g. `testuser`).
-   - Open **Credentials** tab $\rightarrow$ **Set password** (e.g. `password`), turn off **Temporary**.
-6. (Optional) Under **Organizations**, create an organization named `adminsop` and assign your test user to it to test Admin Portal access.
+
+### In Production (VM):
+1. Update `KEYCLOAK_CLIENT_SECRET` in `docker-compose.prod.yml` or `bff_app/.env`.
+2. Restart the production BFF container:
+   ```bash
+   docker compose -f docker-compose.prod.yml restart bff_app
+   ```
 
 ---
 
@@ -142,20 +174,20 @@ Open **`http://localhost:8080`** in Google Chrome.
 ### Login Flow
 ```
 User clicks "Login with Keycloak" in Flutter Web
-  └─> Browser navigates to http://localhost:8001/auth/login
+  └─> Browser navigates to https://<DOMAIN>/auth/login
        └─> BFF generates PKCE code_challenge (S256) and stores verifier in temporary session cookie
-            └─> Browser redirected to Keycloak login page (http://localhost:8180/realms/deron-realm/...)
+            └─> Browser redirected to Keycloak login page (https://<DOMAIN>/kc/realms/deron-realm/...)
                  └─> User logs in
-                      └─> Keycloak redirects browser to BFF callback: http://localhost:8001/auth/callback?code=XYZ
+                      └─> Keycloak redirects browser to BFF callback: https://<DOMAIN>/auth/callback?code=XYZ
                            └─> BFF exchanges authorization code for tokens via backchannel (http://keycloak:8080/...)
                                 └─> BFF generates opaque session_id and saves tokens + userinfo into PostgreSQL
                                      └─> BFF sets HTTP-only `bff_session_id` cookie
-                                          └─> Browser redirected to Flutter Web: http://localhost:8080/
+                                          └─> Browser redirected to Flutter Web: https://<DOMAIN>/
 ```
 
 ### Authenticated Request Flow
 ```
-Flutter Web makes API call: POST http://localhost:8001/api/v1/permissions/
+Flutter Web makes API call: POST https://<DOMAIN>/api/v1/permissions/
   └─> Browser automatically includes `bff_session_id` cookie
        └─> BFF looks up `bff_session_id` in PostgreSQL (`bff_sessions` table)
             └─> BFF checks token expiration (auto-refreshes via Keycloak if expired)
@@ -169,12 +201,12 @@ Flutter Web makes API call: POST http://localhost:8001/api/v1/permissions/
 ### Logout Flow
 ```
 User clicks "Logout" in Flutter Web
-  └─> Browser navigates to http://localhost:8001/auth/logout
+  └─> Browser navigates to https://<DOMAIN>/auth/logout
        └─> BFF deletes session row from PostgreSQL
             └─> BFF clears `bff_session_id` cookie
                  └─> BFF redirects browser to Keycloak logout URL (with id_token_hint)
                       └─> Keycloak revokes SSO session
-                           └─> Browser redirected back to Flutter Web (http://localhost:8080/)
+                           └─> Browser redirected back to Flutter Web (https://<DOMAIN>/)
 ```
 
 ---
