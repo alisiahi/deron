@@ -68,11 +68,12 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     try {
+      // Send data entry form through the BFF reverse proxy gateway
       final response = await client.post(
         Uri.parse('http://localhost:8001/api/v1/permissions/'),
         headers: {
           'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest', // CSRF header
+          'X-Requested-With': 'XMLHttpRequest', // Required custom header for CSRF defense on state-changing methods
         },
         body: jsonEncode(payload),
       );
@@ -145,7 +146,6 @@ class _DashboardPageState extends State<DashboardPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Header
                   Row(
                     children: [
                       IconButton(
@@ -176,7 +176,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                   const SizedBox(height: 32),
 
-                  // Success message
                   if (_isSubmitted) ...[
                     Container(
                       padding: const EdgeInsets.all(16),
@@ -201,7 +200,6 @@ class _DashboardPageState extends State<DashboardPage> {
                     const SizedBox(height: 24),
                   ],
 
-                  // First Name & Last Name
                   Row(
                     children: [
                       Expanded(
@@ -233,7 +231,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Email
                   TextFormField(
                     controller: _emailController,
                     decoration: const InputDecoration(labelText: 'Email Address', hintText: 'hello@kiwiapp.com'),
@@ -247,7 +244,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Role Dropdown
                   DropdownButtonFormField<String>(
                     value: _selectedRole,
                     decoration: const InputDecoration(labelText: 'Your Role'),
@@ -263,7 +259,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Message
                   TextFormField(
                     controller: _messageController,
                     maxLines: 4,
@@ -280,7 +275,6 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                   const SizedBox(height: 32),
 
-                  // Submit Button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(

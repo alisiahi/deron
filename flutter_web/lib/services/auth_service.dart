@@ -9,6 +9,7 @@ import '../models/user.dart';
 class AuthService {
   static const String bffUrl = 'http://localhost:8001';
 
+  // Configures a BrowserClient with credentials enabled to automatically transmit cookies in web CORS mode
   http.Client _createClient() {
     if (kIsWeb) {
       final client = BrowserClient();
@@ -18,6 +19,7 @@ class AuthService {
     return http.Client();
   }
 
+  // Polls the BFF endpoint to resolve active session user info
   Future<User?> checkAuth() async {
     final client = _createClient();
     try {
@@ -35,19 +37,21 @@ class AuthService {
       }
       return null;
     } catch (e) {
-      debugPrint('Error checking auth: $e');
+      debugPrint('Auth check failed: $e');
       return null;
     } finally {
       client.close();
     }
   }
 
+  // Redirects browser window to the BFF login route to initiate OIDC authorization flow
   void login() {
     if (kIsWeb) {
       html.window.location.href = '$bffUrl/auth/login';
     }
   }
 
+  // Redirects browser window to the BFF logout route to clear cookies and revoke Keycloak SSO session
   void logout() {
     if (kIsWeb) {
       html.window.location.href = '$bffUrl/auth/logout';

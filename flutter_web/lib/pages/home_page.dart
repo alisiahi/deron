@@ -24,7 +24,6 @@ class HomePage extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Icon Badge
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
@@ -46,7 +45,6 @@ class HomePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 32),
 
-                // Title
                 RichText(
                   textAlign: TextAlign.center,
                   text: const TextSpan(
@@ -67,7 +65,6 @@ class HomePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
 
-                // Description
                 const Text(
                   'The most delicious way to manage your data. Built with Flutter Web, FastAPI BFF, and Keycloak Identity Provider.',
                   textAlign: TextAlign.center,
@@ -79,7 +76,6 @@ class HomePage extends StatelessWidget {
                 ),
                 const SizedBox(height: 48),
 
-                // Action Buttons
                 Wrap(
                   spacing: 16,
                   runSpacing: 16,
@@ -117,7 +113,7 @@ class HomePage extends StatelessWidget {
                   ],
                 ),
 
-                // Debug User Info Card
+                // Display active user session payload returned from BFF endpoint
                 if (auth.isAuthenticated && auth.user != null) ...[
                   const SizedBox(height: 48),
                   Container(

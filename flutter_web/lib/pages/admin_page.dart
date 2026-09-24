@@ -27,6 +27,7 @@ class _AdminPageState extends State<AdminPage> {
     _fetchRequests();
   }
 
+  // Fetch all permission requests via BFF reverse proxy admin endpoint
   Future<void> _fetchRequests() async {
     setState(() {
       _isLoading = true;
@@ -70,6 +71,7 @@ class _AdminPageState extends State<AdminPage> {
     }
   }
 
+  // Issue a DELETE request to clear a target request by ID
   Future<void> _deleteRequest(int id) async {
     http.Client client;
     if (kIsWeb) {
@@ -92,7 +94,7 @@ class _AdminPageState extends State<AdminPage> {
         });
       }
     } catch (e) {
-      debugPrint('Delete error: $e');
+      debugPrint('Delete request failed: $e');
     } finally {
       client.close();
     }
@@ -102,6 +104,7 @@ class _AdminPageState extends State<AdminPage> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
 
+    // Client-side route guard: check organization claim
     if (!auth.isAdmin) {
       return Scaffold(
         appBar: const AppNavbar(),
@@ -141,7 +144,6 @@ class _AdminPageState extends State<AdminPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Header
                 Row(
                   children: [
                     IconButton(
@@ -177,7 +179,6 @@ class _AdminPageState extends State<AdminPage> {
                 ),
                 const SizedBox(height: 32),
 
-                // Error
                 if (_error != null) ...[
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -197,7 +198,6 @@ class _AdminPageState extends State<AdminPage> {
                   const SizedBox(height: 24),
                 ],
 
-                // Table
                 Container(
                   decoration: BoxDecoration(
                     color: AppTheme.surface,

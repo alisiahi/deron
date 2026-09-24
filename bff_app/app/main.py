@@ -20,8 +20,9 @@ from app.models import BFFSession
 
 logger = logging.getLogger(__name__)
 
+
 async def periodic_session_cleanup():
-    """Background task purging expired sessions from Postgres every hour."""
+    """Purge stale session rows from Postgres on a 1-hour interval."""
     while True:
         await asyncio.sleep(3600)
         try:
@@ -30,12 +31,15 @@ async def periodic_session_cleanup():
                     delete(BFFSession).where(BFFSession.expires_at < datetime.now(timezone.utc))
                 )
                 await session.commit()
-                logger.info(f"Session cleanup: purged {result.rowcount} expired sessions")
+                if result.rowcount > 0:
+                    logger.info(f"Cleaned up {result.rowcount} expired BFF sessions")
         except Exception as e:
-            logger.error(f"Session cleanup failed: {e}")
+            logger.error(f"Error during periodic session cleanup: {e}")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Ensure database schema exists on boot and start background session pruner
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     cleanup_task = asyncio.create_task(periodic_session_cleanup())
@@ -43,16 +47,17 @@ async def lifespan(app: FastAPI):
     cleanup_task.cancel()
     await engine.dispose()
 
+
 app = FastAPI(title=settings.PROJECT_NAME, version=settings.VERSION, lifespan=lifespan)
 
-# Starlette SessionMiddleware for Authlib temporary login state (PKCE verifier)
+# Required by Authlib to maintain transient state (PKCE verifier & nonce) during OIDC redirect
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.SESSION_SECRET_KEY,
     max_age=3600
 )
 
-# CORS middleware for Flutter Web & dev servers
+# CORS setup for local web client development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:8080", "http://localhost:5173"],
@@ -61,11 +66,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Keycloak URLs
+# Separate endpoints: FRONTEND_KC_URL is exposed to browser redirects; BACKEND_KC_URL is internal container traffic
 FRONTEND_KC_URL = f"http://localhost:8180/realms/{settings.KEYCLOAK_REALM}"
 BACKEND_KC_URL = f"http://keycloak:8080/realms/{settings.KEYCLOAK_REALM}"
 
-# Initialize Authlib OAuth
 oauth = OAuth()
 oauth.register(
     name="keycloak",
@@ -81,25 +85,26 @@ oauth.register(
 )
 
 
-# --- Dependencies to validate custom DB-backed session ---
+# Session Dependencies
 async def get_current_session(
     bff_session_id: str | None = Cookie(default=None),
     db: AsyncSession = Depends(get_db)
 ) -> BFFSession:
+    """Strict session validation dependency. Rejects unauthenticated requests with 401."""
     if not bff_session_id:
-        raise HTTPException(status_code=401, detail="No session cookie provided")
-    
+        raise HTTPException(status_code=401, detail="Missing authentication session cookie")
+
     result = await db.execute(select(BFFSession).where(BFFSession.id == bff_session_id))
     db_session = result.scalars().first()
-    
+
     if not db_session:
-        raise HTTPException(status_code=401, detail="Invalid session")
-        
+        raise HTTPException(status_code=401, detail="Session not found or invalid")
+
     if db_session.expires_at and db_session.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         await db.delete(db_session)
         await db.commit()
         raise HTTPException(status_code=401, detail="Session expired")
-        
+
     return db_session
 
 
@@ -107,21 +112,21 @@ async def get_optional_session(
     bff_session_id: str | None = Cookie(default=None),
     db: AsyncSession = Depends(get_db)
 ) -> BFFSession | None:
-    """Same as get_current_session, but returns None instead of raising 401"""
+    """Permissive session resolver for public endpoints that adapt based on login state."""
     if not bff_session_id:
         return None
-    
+
     result = await db.execute(select(BFFSession).where(BFFSession.id == bff_session_id))
     db_session = result.scalars().first()
-    
+
     if not db_session:
         return None
-        
+
     if db_session.expires_at and db_session.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc):
         await db.delete(db_session)
         await db.commit()
         return None
-        
+
     return db_session
 
 
@@ -132,19 +137,19 @@ async def health_check():
 
 @app.get("/auth/login")
 async def login(request: Request):
-    """Initiates OIDC Login Flow with Keycloak"""
+    """Redirect browser to Keycloak authorization endpoint with PKCE challenge."""
     redirect_uri = "http://localhost:8001/auth/callback"
     return await oauth.keycloak.authorize_redirect(request, redirect_uri)
 
 
 @app.get("/auth/callback")
 async def auth_callback(request: Request, db: AsyncSession = Depends(get_db)):
-    """Handles callback, exchanges code for tokens, and creates Postgres DB session"""
+    """Exchange OIDC authorization code for tokens and issue an HTTP-only session cookie."""
     try:
         token = await oauth.keycloak.authorize_access_token(request)
     except Exception as e:
-        logger.error(f"Authentication failed: {e}")
-        raise HTTPException(status_code=400, detail=f"Authentication failed: {e}")
+        logger.error(f"Failed to exchange authorization code for tokens: {e}")
+        raise HTTPException(status_code=400, detail=f"Authentication callback failed: {e}")
 
     user_info = token.get("userinfo")
     access_token_expires_in = token.get("expires_in", 300)
@@ -163,18 +168,16 @@ async def auth_callback(request: Request, db: AsyncSession = Depends(get_db)):
     db.add(db_session)
     await db.commit()
 
-    # Clear temporary Authlib PKCE state cookie
+    # Drop temporary OAuth state cookie after successful token exchange
     request.session.clear()
 
-    # Redirect browser back to Flutter Web
     response = RedirectResponse(url="http://localhost:8080/")
-
     response.set_cookie(
         key="bff_session_id",
         value=session_id,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=False,  # Set to True in production over HTTPS
         max_age=session_lifetime
     )
     return response
@@ -182,7 +185,7 @@ async def auth_callback(request: Request, db: AsyncSession = Depends(get_db)):
 
 @app.get("/auth/me")
 async def get_current_user(db_session: BFFSession | None = Depends(get_optional_session)):
-    """Flutter Web calls this to know who is logged in"""
+    """Return identity claims and organization info for the active browser session."""
     if not db_session:
         return {"authenticated": False}
 
@@ -210,7 +213,7 @@ async def logout(
     db: AsyncSession = Depends(get_db),
     bff_session_id: str | None = Cookie(default=None)
 ):
-    """Clears Postgres DB session and redirects to Keycloak logout endpoint"""
+    """Destroy local Postgres session and trigger Keycloak RP-Initiated Logout."""
     id_token = None
     if bff_session_id:
         result = await db.execute(select(BFFSession).where(BFFSession.id == bff_session_id))
@@ -233,7 +236,7 @@ async def logout(
 
 @app.get("/auth/debug/token")
 async def debug_token(db_session: BFFSession = Depends(get_current_session)):
-    """Debug endpoint to inspect full raw token structure"""
+    """Inspection endpoint for checking raw token lifetimes during dev."""
     return {
         "session_id": db_session.id,
         "access_token": db_session.access_token,
@@ -245,15 +248,14 @@ async def debug_token(db_session: BFFSession = Depends(get_current_session)):
     }
 
 
-# --- Token Refresh ---
 async def ensure_fresh_token(db_session: BFFSession, db: AsyncSession) -> str:
-    """Refreshes access token if expired or expiring within 30s."""
+    """Verify access token validity and refresh via Keycloak backchannel if near expiry."""
     if db_session.access_token_expires_at and \
        db_session.access_token_expires_at.replace(tzinfo=timezone.utc) > datetime.now(timezone.utc) + timedelta(seconds=30):
         return db_session.access_token
 
     if not db_session.refresh_token:
-        raise HTTPException(status_code=401, detail="Session expired, please log in again")
+        raise HTTPException(status_code=401, detail="Refresh token missing, re-authentication required")
 
     async with httpx.AsyncClient() as client:
         try:
@@ -267,7 +269,7 @@ async def ensure_fresh_token(db_session: BFFSession, db: AsyncSession) -> str:
                 }
             )
             if resp.status_code != 200:
-                logger.warning(f"Token refresh failed with status {resp.status_code}")
+                logger.warning(f"Keycloak refresh token request rejected with status {resp.status_code}")
                 raise HTTPException(status_code=401, detail="Session expired, please log in again")
 
             new_tokens = resp.json()
@@ -277,14 +279,13 @@ async def ensure_fresh_token(db_session: BFFSession, db: AsyncSession) -> str:
             await db.commit()
             return db_session.access_token
         except httpx.RequestError as e:
-            logger.error(f"Failed to reach Keycloak for token refresh: {e}")
-            raise HTTPException(status_code=502, detail="Authentication service unavailable")
+            logger.error(f"Unreachable Keycloak token endpoint during refresh: {e}")
+            raise HTTPException(status_code=502, detail="Identity provider unavailable")
 
 
 ALLOWED_PROXY_HEADERS = {"content-type", "accept", "accept-language", "accept-encoding"}
 
 
-# --- Downstream Reverse Proxy / API Gateway ---
 @app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def proxy_to_downstream(
     path: str,
@@ -292,14 +293,12 @@ async def proxy_to_downstream(
     db_session: BFFSession = Depends(get_current_session),
     db: AsyncSession = Depends(get_db)
 ):
-    """
-    Intercepts /api/* requests from Flutter Web, retrieves Bearer token from Postgres
-    using the bff_session_id cookie, refreshes if needed, and forwards to permissions_app.
-    """
+    """Reverse proxy gateway. Attaches Bearer token to requests forwarded to internal services."""
+    # CSRF mitigation for unsafe methods when using cookie-based auth
     if request.method in ("POST", "PUT", "DELETE"):
         csrf_header = request.headers.get("x-requested-with")
         if csrf_header != "XMLHttpRequest":
-            raise HTTPException(status_code=403, detail="CSRF validation failed")
+            raise HTTPException(status_code=403, detail="CSRF validation failed: missing custom header")
 
     access_token = await ensure_fresh_token(db_session, db)
     target_url = f"{settings.PERMISSIONS_API_URL}/api/{path}"
@@ -324,5 +323,5 @@ async def proxy_to_downstream(
                 headers=dict(response.headers)
             )
         except httpx.RequestError as e:
-            logger.error(f"Proxy error to {target_url}: {e}")
-            raise HTTPException(status_code=502, detail="Downstream service unavailable")
+            logger.error(f"Downstream service proxy failure for {target_url}: {e}")
+            raise HTTPException(status_code=502, detail="Target microservice unreachable")
