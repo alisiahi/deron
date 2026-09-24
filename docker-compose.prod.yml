@@ -35,6 +35,10 @@ services:
       - KC_DB_USERNAME=postgres
       - KC_DB_PASSWORD=postgrespassword
       - KC_HTTP_RELATIVE_PATH=/kc
+      - KC_PROXY_HEADERS=xforwarded
+      - KC_HOSTNAME_URL=https://rlab-drone-establish.egov.uni-koblenz.de/kc
+      - KC_HOSTNAME_ADMIN_URL=https://rlab-drone-establish.egov.uni-koblenz.de/kc
+      - KC_HOSTNAME_STRICT_HTTPS=true
     depends_on:
       - db
 
