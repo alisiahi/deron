@@ -6,6 +6,7 @@ import 'package:http/browser_client.dart';
 import 'package:flutter/foundation.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_navbar.dart';
+import '../services/auth_service.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -68,12 +69,11 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     try {
-      // Send data entry form through the BFF reverse proxy gateway
       final response = await client.post(
-        Uri.parse('http://localhost:8001/api/v1/permissions/'),
+        Uri.parse('${AuthService.bffUrl}/api/v1/permissions/'),
         headers: {
           'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest', // Required custom header for CSRF defense on state-changing methods
+          'X-Requested-With': 'XMLHttpRequest',
         },
         body: jsonEncode(payload),
       );

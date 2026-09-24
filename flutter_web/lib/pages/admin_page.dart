@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_navbar.dart';
+import '../services/auth_service.dart';
 
 class AdminPage extends StatefulWidget {
   const AdminPage({super.key});
@@ -27,7 +28,6 @@ class _AdminPageState extends State<AdminPage> {
     _fetchRequests();
   }
 
-  // Fetch all permission requests via BFF reverse proxy admin endpoint
   Future<void> _fetchRequests() async {
     setState(() {
       _isLoading = true;
@@ -45,7 +45,7 @@ class _AdminPageState extends State<AdminPage> {
 
     try {
       final response = await client.get(
-        Uri.parse('http://localhost:8001/api/v1/admin/permissions'),
+        Uri.parse('${AuthService.bffUrl}/api/v1/admin/permissions'),
       );
 
       if (response.statusCode == 200) {
@@ -71,7 +71,6 @@ class _AdminPageState extends State<AdminPage> {
     }
   }
 
-  // Issue a DELETE request to clear a target request by ID
   Future<void> _deleteRequest(int id) async {
     http.Client client;
     if (kIsWeb) {
@@ -84,7 +83,7 @@ class _AdminPageState extends State<AdminPage> {
 
     try {
       final response = await client.delete(
-        Uri.parse('http://localhost:8001/api/v1/admin/permissions/$id'),
+        Uri.parse('${AuthService.bffUrl}/api/v1/admin/permissions/$id'),
         headers: {'X-Requested-With': 'XMLHttpRequest'},
       );
 
@@ -104,7 +103,6 @@ class _AdminPageState extends State<AdminPage> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
 
-    // Client-side route guard: check organization claim
     if (!auth.isAdmin) {
       return Scaffold(
         appBar: const AppNavbar(),

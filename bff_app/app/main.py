@@ -39,7 +39,6 @@ async def periodic_session_cleanup():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ensure database schema exists on boot and start background session pruner
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     cleanup_task = asyncio.create_task(periodic_session_cleanup())
@@ -60,15 +59,15 @@ app.add_middleware(
 # CORS setup for local web client development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://localhost:5173"],
+    allow_origins=[settings.FRONTEND_URL, "http://localhost:8080", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Separate endpoints: FRONTEND_KC_URL is exposed to browser redirects; BACKEND_KC_URL is internal container traffic
-FRONTEND_KC_URL = f"http://localhost:8180/realms/{settings.KEYCLOAK_REALM}"
-BACKEND_KC_URL = f"http://keycloak:8080/realms/{settings.KEYCLOAK_REALM}"
+# Keycloak URLs: FRONTEND_KC_URL for browser redirects; BACKEND_KC_URL for internal container traffic
+FRONTEND_KC_URL = f"{settings.KEYCLOAK_SERVER_URL}/realms/{settings.KEYCLOAK_REALM}"
+BACKEND_KC_URL = f"{settings.KEYCLOAK_INTERNAL_URL}/realms/{settings.KEYCLOAK_REALM}"
 
 oauth = OAuth()
 oauth.register(
@@ -138,7 +137,7 @@ async def health_check():
 @app.get("/auth/login")
 async def login(request: Request):
     """Redirect browser to Keycloak authorization endpoint with PKCE challenge."""
-    redirect_uri = "http://localhost:8001/auth/callback"
+    redirect_uri = f"{settings.BFF_PUBLIC_URL}/auth/callback"
     return await oauth.keycloak.authorize_redirect(request, redirect_uri)
 
 
@@ -171,7 +170,7 @@ async def auth_callback(request: Request, db: AsyncSession = Depends(get_db)):
     # Drop temporary OAuth state cookie after successful token exchange
     request.session.clear()
 
-    response = RedirectResponse(url="http://localhost:8080/")
+    response = RedirectResponse(url=f"{settings.FRONTEND_URL}/")
     response.set_cookie(
         key="bff_session_id",
         value=session_id,
@@ -225,9 +224,9 @@ async def logout(
 
     logout_url = f"{FRONTEND_KC_URL}/protocol/openid-connect/logout"
     if id_token:
-        logout_url += f"?id_token_hint={id_token}&client_id={settings.KEYCLOAK_CLIENT_ID}&post_logout_redirect_uri=http://localhost:8080/"
+        logout_url += f"?id_token_hint={id_token}&client_id={settings.KEYCLOAK_CLIENT_ID}&post_logout_redirect_uri={settings.FRONTEND_URL}/"
     else:
-        logout_url += f"?client_id={settings.KEYCLOAK_CLIENT_ID}&post_logout_redirect_uri=http://localhost:8080/"
+        logout_url += f"?client_id={settings.KEYCLOAK_CLIENT_ID}&post_logout_redirect_uri={settings.FRONTEND_URL}/"
 
     redirect_response = RedirectResponse(url=logout_url)
     redirect_response.delete_cookie("bff_session_id")
@@ -294,7 +293,6 @@ async def proxy_to_downstream(
     db: AsyncSession = Depends(get_db)
 ):
     """Reverse proxy gateway. Attaches Bearer token to requests forwarded to internal services."""
-    # CSRF mitigation for unsafe methods when using cookie-based auth
     if request.method in ("POST", "PUT", "DELETE"):
         csrf_header = request.headers.get("x-requested-with")
         if csrf_header != "XMLHttpRequest":

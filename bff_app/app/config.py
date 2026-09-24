@@ -4,13 +4,18 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Deron BFF App"
     VERSION: str = "1.0.0"
     
+    # Frontend & BFF URLs
+    FRONTEND_URL: str = "http://localhost:8080"
+    BFF_PUBLIC_URL: str = "http://localhost:8001"
+    
     # Keycloak OAuth2 Config
     KEYCLOAK_SERVER_URL: str = "http://localhost:8180"
+    KEYCLOAK_INTERNAL_URL: str = "http://keycloak:8080"
     KEYCLOAK_REALM: str = "deron-realm"
     KEYCLOAK_CLIENT_ID: str = "deron-bff"
     KEYCLOAK_CLIENT_SECRET: str
     
-    # BFF Session Secret (used by Starlette SessionMiddleware for temporary login state)
+    # BFF Session Secret
     SESSION_SECRET_KEY: str
     
     # Downstream API URL

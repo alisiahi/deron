@@ -48,7 +48,10 @@ services:
     container_name: deron_bff_app_prod
     restart: always
     environment:
-      - KEYCLOAK_SERVER_URL=https://rlab-drone-establish.egov.uni-koblenz.de
+      - FRONTEND_URL=https://rlab-drone-establish.egov.uni-koblenz.de
+      - BFF_PUBLIC_URL=https://rlab-drone-establish.egov.uni-koblenz.de
+      - KEYCLOAK_SERVER_URL=https://rlab-drone-establish.egov.uni-koblenz.de/kc
+      - KEYCLOAK_INTERNAL_URL=http://keycloak:8080/kc
       - KEYCLOAK_REALM=deron-realm
       - KEYCLOAK_CLIENT_ID=deron-bff
       - KEYCLOAK_CLIENT_SECRET=HExOK0mQz3uQno684TSlkglhW3N61qXzOksdzmJ3RDUUdRm5FBV1Hac4fHgbGjPDcUWmpXcLbXfCG3KqTf8hI5
