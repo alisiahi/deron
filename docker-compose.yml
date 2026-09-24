@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: deron_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: drone_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - deron_postgres_data:/var/lib/postgresql/data
+
+  permissions_app:
+    build:
+      context: ./permissions_app
+    container_name: deron_permissions_app
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@db:5432/drone_db
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    volumes:
+      - ./permissions_app:/app
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.0
+    container_name: deron_keycloak
+    restart: always
+    command: start-dev --features=organization
+    environment:
+      - KC_BOOTSTRAP_ADMIN_USERNAME=admin
+      - KC_BOOTSTRAP_ADMIN_PASSWORD=admin
+      - KC_DB=postgres
+      - KC_DB_URL=jdbc:postgresql://db:5432/drone_db
+      - KC_DB_USERNAME=postgres
+      - KC_DB_PASSWORD=postgrespassword
+    ports:
+      - "8180:8080"
+    depends_on:
+      - db
+
+  bff_app:
+    build:
+      context: ./bff_app
+    container_name: deron_bff_app
+    restart: always
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./bff_app:/app
+    depends_on:
+      - keycloak
+      - permissions_app
+
+volumes:
+  deron_postgres_data:
