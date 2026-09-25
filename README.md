@@ -128,7 +128,7 @@ Open **`http://localhost:8080`** in Google Chrome.
 
 2. Go to **Clients** $\rightarrow$ **Create client**:
 
-| Field | Development Value (`localhost:8080`) | Production Value | Purpose |
+| Field | Development Value | Production Value | Purpose |
 |---|---|---|---|
 | **Client ID** | `deron-bff` | `deron-bff` | Unique client identifier |
 | **Client Authentication** | **ON** | **ON** | Makes client confidential (requires secret) |
@@ -137,8 +137,8 @@ Open **`http://localhost:8080`** in Google Chrome.
 | **Authentication flow** | Standard Flow | Standard Flow | Enables Authorization Code Flow |
 | **Root URL** | `http://localhost:8080` | `https://rlab-drone-establish.egov.uni-koblenz.de` | Primary base URL of frontend |
 | **Home URL** | `http://localhost:8080/` | `https://rlab-drone-establish.egov.uni-koblenz.de/` | Default landing page |
-| **Valid redirect URIs** | `http://localhost:8080/auth/callback`<br>`http://localhost:8080/*` | `https://rlab-drone-establish.egov.uni-koblenz.de/auth/callback`<br>`https://rlab-drone-establish.egov.uni-koblenz.de/*` | Allowed authentication callback endpoints |
-| **Valid post logout redirect URIs** | `http://localhost:8080/*` | `https://rlab-drone-establish.egov.uni-koblenz.de/*` | Allowed post-logout return URIs |
+| **Valid redirect URIs** | `http://localhost:8001/auth/callback`<br>`http://localhost:8001/*` | `https://rlab-drone-establish.egov.uni-koblenz.de/auth/callback`<br>`https://rlab-drone-establish.egov.uni-koblenz.de/*` | Allowed authentication callback endpoints (BFF handles this) |
+| **Valid post logout redirect URIs** | `http://localhost:8080/*` | `https://rlab-drone-establish.egov.uni-koblenz.de/*` | Allowed post-logout return URIs (Returns to Frontend) |
 | **Web origins** | `+` (or `http://localhost:8080`) | `+` (or `https://rlab-drone-establish.egov.uni-koblenz.de`) | Allows CORS origins matching redirect URIs |
 
 3. Click **Save**, open the **Credentials** tab, and copy the **Client Secret**.
