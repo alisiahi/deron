@@ -121,25 +121,25 @@ Open **`http://localhost:8080`** in Google Chrome.
 
 ---
 
-### Dashboard Settings Template (Replace `<DOMAIN>` with your domain or `localhost:8080`)
+### Dashboard Settings Template
 
 1. Log in to the Admin Dashboard and create a realm:
    - **Realm Name**: `deron-realm` (or `kiwi-realm`)
 
 2. Go to **Clients** $\rightarrow$ **Create client**:
 
-| Field | Value | Purpose |
-|---|---|---|
-| **Client ID** | `deron-bff` | Unique client identifier |
-| **Client Authentication** | **ON** | Makes client confidential (requires secret) |
-| **Proof Key for Code Exchange (PKCE)** | **ON** (Method `S256`) | Required PKCE enforcement for code exchange |
-| **Authorization** | **OFF** | Standard OIDC authentication only |
-| **Authentication flow** | Standard Flow | Enables Authorization Code Flow |
-| **Root URL** | `https://<DOMAIN>` | Primary base URL of frontend |
-| **Home URL** | `https://<DOMAIN>/` | Default landing page |
-| **Valid redirect URIs** | `https://<DOMAIN>/auth/callback`<br>`https://<DOMAIN>/*` | Allowed authentication callback endpoints |
-| **Valid post logout redirect URIs** | `https://<DOMAIN>/*` | Allowed post-logout return URIs |
-| **Web origins** | `+` *(or `https://<DOMAIN>`)* | Allows CORS origins matching redirect URIs |
+| Field | Development Value (`localhost:8080`) | Production Value | Purpose |
+|---|---|---|---|
+| **Client ID** | `deron-bff` | `deron-bff` | Unique client identifier |
+| **Client Authentication** | **ON** | **ON** | Makes client confidential (requires secret) |
+| **Proof Key for Code Exchange (PKCE)** | **ON** (Method `S256`) | **ON** (Method `S256`) | Required PKCE enforcement for code exchange |
+| **Authorization** | **OFF** | **OFF** | Standard OIDC authentication only |
+| **Authentication flow** | Standard Flow | Standard Flow | Enables Authorization Code Flow |
+| **Root URL** | `http://localhost:8080` | `https://rlab-drone-establish.egov.uni-koblenz.de` | Primary base URL of frontend |
+| **Home URL** | `http://localhost:8080/` | `https://rlab-drone-establish.egov.uni-koblenz.de/` | Default landing page |
+| **Valid redirect URIs** | `http://localhost:8080/auth/callback`<br>`http://localhost:8080/*` | `https://rlab-drone-establish.egov.uni-koblenz.de/auth/callback`<br>`https://rlab-drone-establish.egov.uni-koblenz.de/*` | Allowed authentication callback endpoints |
+| **Valid post logout redirect URIs** | `http://localhost:8080/*` | `https://rlab-drone-establish.egov.uni-koblenz.de/*` | Allowed post-logout return URIs |
+| **Web origins** | `+` (or `http://localhost:8080`) | `+` (or `https://rlab-drone-establish.egov.uni-koblenz.de`) | Allows CORS origins matching redirect URIs |
 
 3. Click **Save**, open the **Credentials** tab, and copy the **Client Secret**.
 
@@ -154,17 +154,17 @@ Open **`http://localhost:8080`** in Google Chrome.
 If you regenerate or change the Client Secret in the Keycloak Admin Dashboard, update the running BFF container without needing a full rebuild:
 
 ### In Local Development:
-1. Update `KEYCLOAK_CLIENT_SECRET` in `bff_app/.env`.
+1. Update `KEYCLOAK_CLIENT_SECRET` in `docker-compose.yml` (under `bff_app` environment variables).
 2. Restart the BFF container:
    ```bash
-   docker compose restart bff_app
+   docker compose up -d bff_app
    ```
 
 ### In Production (VM):
-1. Update `KEYCLOAK_CLIENT_SECRET` in `docker-compose.prod.yml` or `bff_app/.env`.
+1. Update `KEYCLOAK_CLIENT_SECRET` in `docker-compose.prod.yml` (under `bff_app` environment variables).
 2. Restart the production BFF container:
    ```bash
-   docker compose -f docker-compose.prod.yml restart bff_app
+   docker compose -f docker-compose.prod.yml up -d bff_app
    ```
 
 ---
@@ -225,33 +225,31 @@ In production at the university, services are distributed across **3 or more Vir
 
 ### Configuring Environment Variables for Multi-VM
 
-#### 1. In `bff_app/.env`:
+#### 1. In `docker-compose.prod.yml` (or your chosen environment configuration):
 ```env
 # Keycloak Configuration
 # Public URL used by browser redirects
-KEYCLOAK_SERVER_URL=https://kc.kiwi.uni-koblenz.de
-# Internal IP / hostname for BFF backchannel token exchange
-KEYCLOAK_INTERNAL_URL=http://10.0.1.10:8080
+KEYCLOAK_SERVER_URL=https://rlab-drone-establish.egov.uni-koblenz.de/kc
+# Internal IP / hostname for BFF backchannel token exchange (example: Docker network hostname)
+KEYCLOAK_INTERNAL_URL=http://keycloak:8080/kc
 
-KEYCLOAK_REALM=kiwi-realm
-KEYCLOAK_CLIENT_ID=kiwi-bff
+KEYCLOAK_REALM=deron-realm
+KEYCLOAK_CLIENT_ID=deron-bff
 KEYCLOAK_CLIENT_SECRET=prod_secret_here
 
-# PostgreSQL VM Connection String
-DATABASE_URL=postgresql+asyncpg://kiwi_user:secure_password@10.0.1.20:5432/kiwi_db
+# PostgreSQL Connection String
+DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@db:5432/drone_db
 
-# Downstream Microservices URLs (VM 3 or internal cluster IPs)
-PERMISSIONS_API_URL=http://10.0.1.30:8000
-COST_CALCULATOR_API_URL=http://10.0.1.31:8000
-DIGITAL_CELLAR_API_URL=http://10.0.1.32:8000
+# Downstream Microservices URLs (internal Docker network or cluster IPs)
+PERMISSIONS_API_URL=http://permissions_app:8000
 ```
 
 #### 2. Dual Keycloak URLs in BFF Code (`bff_app/app/main.py`):
-In production, the browser reaches Keycloak over HTTPS (`https://kc.kiwi.uni-koblenz.de`), while the BFF talks to Keycloak over the internal university network (`http://10.0.1.10:8080`):
+In production, the browser reaches Keycloak over HTTPS (`https://rlab-drone-establish.egov.uni-koblenz.de/kc`), while the BFF talks to Keycloak over the internal Docker network (`http://keycloak:8080/kc`):
 
 ```python
-FRONTEND_KC_URL = "https://kc.kiwi.uni-koblenz.de/realms/kiwi-realm"
-BACKEND_KC_URL = "http://10.0.1.10:8080/realms/kiwi-realm"
+FRONTEND_KC_URL = "https://rlab-drone-establish.egov.uni-koblenz.de/kc/realms/deron-realm"
+BACKEND_KC_URL = "http://keycloak:8080/kc/realms/deron-realm"
 
 oauth.register(
     name="keycloak",
@@ -268,8 +266,8 @@ oauth.register(
 Downstream APIs need Keycloak's public keys to cryptographically verify incoming Bearer tokens:
 
 ```python
-KEYCLOAK_ISSUER_URL = "https://kc.kiwi.uni-koblenz.de/realms/kiwi-realm"
-KEYCLOAK_INTERNAL_URL = "http://10.0.1.10:8080/realms/kiwi-realm"
+KEYCLOAK_ISSUER_URL = "https://rlab-drone-establish.egov.uni-koblenz.de/kc/realms/deron-realm"
+KEYCLOAK_INTERNAL_URL = "http://keycloak:8080/kc/realms/deron-realm"
 JWKS_URL = f"{KEYCLOAK_INTERNAL_URL}/protocol/openid-connect/certs"
 
 jwks_client = PyJWKClient(JWKS_URL)

@@ -48,6 +48,9 @@ services:
       context: ./bff_app
     container_name: deron_bff_app
     restart: always
+    environment:
+      - KEYCLOAK_CLIENT_SECRET=RkLf7Fgc6GxOcqdTpC7AFv67WpXSwCuGNh9xtFRedWFJjTO4EXd8h8j33lWjBu2yac0RT4aAvZDMpxMRM4RSr5
+      - SESSION_SECRET_KEY=dev-bff-session-secret-replace-in-production-k7x9m2
     ports:
       - "8001:8001"
     volumes:
