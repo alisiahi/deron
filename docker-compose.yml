@@ -49,8 +49,16 @@ services:
     container_name: deron_bff_app
     restart: always
     environment:
+      - FRONTEND_URL=http://localhost:8080
+      - BFF_PUBLIC_URL=http://localhost:8001
+      - KEYCLOAK_SERVER_URL=http://localhost:8180
+      - KEYCLOAK_INTERNAL_URL=http://keycloak:8080
+      - KEYCLOAK_REALM=deron-realm
+      - KEYCLOAK_CLIENT_ID=deron-bff
       - KEYCLOAK_CLIENT_SECRET=fJb1U33GTJQ5OQGRlyHKXK9uy4u8bpFR4SNqxCD3utP5nxPKPxHUHqpu6g1rV5yX30O1EjXRJIdCpUhuIfysIo
       - SESSION_SECRET_KEY=dev-bff-session-secret-replace-in-production-k7x9m2
+      - PERMISSIONS_API_URL=http://permissions_app:8000
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@db:5432/drone_db
     ports:
       - "8001:8001"
     volumes:

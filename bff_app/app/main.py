@@ -56,10 +56,11 @@ app.add_middleware(
     max_age=3600
 )
 
-# CORS setup for local web client development
+# CORS: Only needed in local development where Flutter Web (port 8080) and BFF (port 8001) are on different origins.
+# In production, Nginx serves everything under the same domain so CORS is not triggered.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL, "http://localhost:8080", "http://localhost:5173"],
+    allow_origins=[settings.FRONTEND_URL],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

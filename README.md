@@ -8,13 +8,15 @@ A complete, production-grade reference implementation for Identity & Access Mana
 1. [Architecture Overview](#architecture-overview)
 2. [Component Breakdown](#component-breakdown)
 3. [How to Run Locally (Quickstart)](#how-to-run-locally-quickstart)
-4. [Keycloak Setup Instructions](#keycloak-setup-instructions)
-5. [Updating Client Secret in Running Containers](#updating-client-secret-in-running-containers)
-6. [How the Auth & Session Flow Works](#how-the-auth--session-flow-works)
-7. [Multi-VM Production Architecture Guide](#multi-vm-production-architecture-guide)
-8. [Connecting Other FastAPI Microservices to the BFF](#connecting-other-fastapi-microservices-to-the-bff)
-9. [Integrating Auth into the Existing Flutter Web Production App](#integrating-auth-into-the-existing-flutter-web-production-app)
-10. [Security Best Practices](#security-best-practices)
+4. [Keycloak Setup — Local Development](#keycloak-setup--local-development)
+5. [Production Deployment Guide](#production-deployment-guide)
+6. [Keycloak Setup — Production](#keycloak-setup--production)
+7. [Updating Client Secret in Running Containers](#updating-client-secret-in-running-containers)
+8. [How the Auth & Session Flow Works](#how-the-auth--session-flow-works)
+9. [Multi-VM Production Architecture Guide](#multi-vm-production-architecture-guide)
+10. [Connecting Other FastAPI Microservices to the BFF](#connecting-other-fastapi-microservices-to-the-bff)
+11. [Integrating Auth into the Existing Flutter Web Production App](#integrating-auth-into-the-existing-flutter-web-production-app)
+12. [Security Best Practices](#security-best-practices)
 
 ---
 
@@ -90,7 +92,7 @@ The **Backend-for-Frontend (BFF)** pattern eliminates this vulnerability by keep
 - Flutter SDK / FVM installed (`fvm flutter`)
 
 ### Step 1: Start the Backend Stack
-From the root directory (`/home/yaqoosh/Music/deron`):
+From the project root directory:
 ```bash
 docker compose up -d --build
 ```
@@ -101,9 +103,21 @@ Verify that all 4 containers are running:
 - Keycloak: `http://localhost:8180`
 
 ### Step 2: Configure Keycloak
-Follow the [Keycloak Setup Instructions](#keycloak-setup-instructions) below to create the realm and client.
+Follow the [Keycloak Setup — Local Development](#keycloak-setup--local-development) section below.
 
-### Step 3: Run Flutter Web
+### Step 3: Update the Client Secret
+After creating the client in Keycloak, copy the **Client Secret** from the Credentials tab and paste it into `docker-compose.yml` under the `bff_app` service:
+```yaml
+bff_app:
+  environment:
+    - KEYCLOAK_CLIENT_SECRET=<paste-your-secret-here>
+```
+Then recreate the BFF container to pick up the new secret:
+```bash
+docker compose up -d bff_app
+```
+
+### Step 4: Run Flutter Web
 ```bash
 cd flutter_web
 fvm flutter run -d chrome --web-port=8080
@@ -112,40 +126,253 @@ Open **`http://localhost:8080`** in Google Chrome.
 
 ---
 
-## Keycloak Setup Instructions
+## Keycloak Setup — Local Development
 
-### Accessing the Keycloak Admin Dashboard
-- **Local Development**: `http://localhost:8180`
-- **Production / VM**: `https://<YOUR_DOMAIN>/kc/admin/` *(e.g. `https://rlab-drone-establish.egov.uni-koblenz.de/kc/admin/`)*
-- **Default Credentials**: `admin` / `admin`
+### Accessing the Admin Dashboard
+- **URL**: `http://localhost:8180`
+- **Credentials**: `admin` / `admin`
+
+### Step 1: Create the Realm
+1. Click the realm dropdown (top-left) → **Create Realm**
+2. **Realm Name**: `deron-realm`
+3. Click **Create**
+
+### Step 2: Create the Client
+
+Go to **Clients** → **Create client**.
+
+**General Settings tab:**
+
+| Field | Value |
+|---|---|
+| **Client type** | OpenID Connect |
+| **Client ID** | `deron-bff` |
+
+Click **Next**.
+
+**Capability Config tab:**
+
+| Field | Value |
+|---|---|
+| **Client Authentication** | **ON** |
+| **Authorization** | **OFF** |
+| **Authentication flow** | ☑ Standard flow (check), uncheck all others |
+
+Click **Next**.
+
+**Login Settings tab:**
+
+> ⚠️ **IMPORTANT**: The **Valid redirect URIs** must point to the **BFF app on port `8001`**, NOT the Flutter frontend on port `8080`. This is because Keycloak redirects back to the BFF (which handles the OAuth callback), not to the Flutter frontend directly. Make sure you type the full URL including the `http://` prefix — a common mistake is to accidentally cut off the `h` when pasting.
+
+| Field | Value | Why |
+|---|---|---|
+| **Root URL** | `http://localhost:8080` | The Flutter frontend base URL |
+| **Home URL** | `http://localhost:8080/` | Landing page after Keycloak actions |
+| **Valid redirect URIs** | `http://localhost:8001/auth/callback` | The BFF callback endpoint (**port 8001**, not 8080!) |
+| *(add another)* | `http://localhost:8001/*` | Wildcard fallback for the BFF |
+| **Valid post logout redirect URIs** | `http://localhost:8080/*` | Where the browser goes after logout (back to Flutter frontend) |
+| **Web origins** | `+` | Automatically allows CORS from redirect URI origins |
+
+Click **Save**.
+
+### Step 3: Enable PKCE
+
+After saving, go to the **Advanced** tab of the client:
+
+| Field | Value |
+|---|---|
+| **Proof Key for Code Exchange Code Challenge Method** | `S256` |
+
+Click **Save**.
+
+### Step 4: Copy the Client Secret
+Go to the **Credentials** tab → copy the **Client Secret**.
+
+Paste it into `docker-compose.yml` under the `bff_app` environment:
+```yaml
+bff_app:
+  environment:
+    - KEYCLOAK_CLIENT_SECRET=<paste-your-secret-here>
+```
+Then restart the BFF:
+```bash
+docker compose up -d bff_app
+```
+
+### Step 5: Create a Test User
+1. Go to **Users** → **Add user**
+2. **Username**: `testuser` (fill in email, first/last name as desired)
+3. Click **Create**
+4. Go to the **Credentials** tab → **Set password**
+5. Enter a password and turn **OFF** the **Temporary** toggle
+6. Click **Save**
+
+### Step 6 (Optional): Create an Organization
+1. Go to **Organizations** → **Create organization**
+2. **Name**: `adminsop`
+3. Click **Create**
+4. Go to the **Members** tab → **Add member** → select your test user
 
 ---
 
-### Dashboard Settings Template
+## Production Deployment Guide
 
-1. Log in to the Admin Dashboard and create a realm:
-   - **Realm Name**: `deron-realm` (or `kiwi-realm`)
+**Production URL**: `https://rlab-drone-establish.egov.uni-koblenz.de`
 
-2. Go to **Clients** $\rightarrow$ **Create client**:
+The production stack uses `docker-compose.prod.yml`, which runs all services behind an Nginx reverse proxy with HTTPS. In production, all services (Flutter frontend, BFF, Keycloak) are accessed through the **same domain** — Nginx routes requests to the correct container based on the URL path:
 
-| Field | Development Value | Production Value | Purpose |
-|---|---|---|---|
-| **Client ID** | `deron-bff` | `deron-bff` | Unique client identifier |
-| **Client Authentication** | **ON** | **ON** | Makes client confidential (requires secret) |
-| **Proof Key for Code Exchange (PKCE)** | **ON** (Method `S256`) | **ON** (Method `S256`) | Required PKCE enforcement for code exchange |
-| **Authorization** | **OFF** | **OFF** | Standard OIDC authentication only |
-| **Authentication flow** | Standard Flow | Standard Flow | Enables Authorization Code Flow |
-| **Root URL** | `http://localhost:8080` | `https://rlab-drone-establish.egov.uni-koblenz.de` | Primary base URL of frontend |
-| **Home URL** | `http://localhost:8080/` | `https://rlab-drone-establish.egov.uni-koblenz.de/` | Default landing page |
-| **Valid redirect URIs** | `http://localhost:8001/auth/callback`<br>`http://localhost:8001/*` | `https://rlab-drone-establish.egov.uni-koblenz.de/auth/callback`<br>`https://rlab-drone-establish.egov.uni-koblenz.de/*` | Allowed authentication callback endpoints (BFF handles this) |
-| **Valid post logout redirect URIs** | `http://localhost:8080/*` | `https://rlab-drone-establish.egov.uni-koblenz.de/*` | Allowed post-logout return URIs (Returns to Frontend) |
-| **Web origins** | `+` (or `http://localhost:8080`) | `+` (or `https://rlab-drone-establish.egov.uni-koblenz.de`) | Allows CORS origins matching redirect URIs |
+| Path | Routed to | Purpose |
+|---|---|---|
+| `/` | Flutter Web (static files) | Frontend |
+| `/auth/*` | `bff_app:8001` | BFF authentication endpoints |
+| `/api/*` | `bff_app:8001` | BFF API gateway |
+| `/kc/*` | `keycloak:8080` | Keycloak identity provider |
 
-3. Click **Save**, open the **Credentials** tab, and copy the **Client Secret**.
+### Step 1: Push the Code to the VM
 
-4. Go to **Users** $\rightarrow$ **Add user** (e.g. `testuser`) and set a password under the **Credentials** tab (turn off **Temporary**).
+From your local machine, sync the project to the VM using `rsync`:
+```bash
+rsync -avz --exclude='.git' --exclude='node_modules' --exclude='.dart_tool' --exclude='build' \
+  /home/yaqoosh/Music/deron/ vm-drone:~/deron/
+```
 
-5. (Optional) Under **Organizations**, create an organization named `adminsop` and assign your test user to it for Admin Portal authorization testing.
+### Step 2: Build and Start Everything on the VM
+
+SSH into the VM:
+```bash
+ssh vm-drone
+```
+
+Navigate to the project directory and build all containers:
+```bash
+cd ~/deron
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+At this point, Keycloak will be running at `https://rlab-drone-establish.egov.uni-koblenz.de/kc/` and ready for configuration.
+
+### Step 3: Configure Keycloak on the VM
+Follow the [Keycloak Setup — Production](#keycloak-setup--production) section below to create the realm and client in the production Keycloak dashboard.
+
+### Step 4: Copy the Client Secret into docker-compose.prod.yml
+
+After creating the client in the Keycloak dashboard, copy the **Client Secret** from the **Credentials** tab. Then edit `docker-compose.prod.yml` on the VM and paste it:
+```bash
+nano ~/deron/docker-compose.prod.yml
+```
+Find the `bff_app` service and update:
+```yaml
+bff_app:
+  environment:
+    - KEYCLOAK_CLIENT_SECRET=<paste-your-production-secret-here>
+```
+
+### Step 5: Rebuild the BFF with the New Secret
+
+Recreate only the BFF container so it picks up the new secret:
+```bash
+docker compose -f docker-compose.prod.yml up -d bff_app
+```
+
+### Rebuilding After Code Changes
+
+When you make code changes locally and want to redeploy:
+```bash
+# 1. From your local machine — push updated code to the VM
+rsync -avz --exclude='.git' --exclude='node_modules' --exclude='.dart_tool' --exclude='build' \
+  /home/yaqoosh/Music/deron/ vm-drone:~/deron/
+
+# 2. SSH into the VM
+ssh vm-drone
+
+# 3. Rebuild and restart all containers
+cd ~/deron
+docker compose -f docker-compose.prod.yml up -d --build
+
+# Or rebuild only specific services (e.g. just the BFF and frontend):
+docker compose -f docker-compose.prod.yml up -d --build bff_app frontend
+```
+
+### Viewing Logs on the VM
+
+```bash
+# All services
+docker compose -f docker-compose.prod.yml logs -f
+
+# Specific service
+docker compose -f docker-compose.prod.yml logs -f bff_app
+```
+
+---
+
+## Keycloak Setup — Production
+
+### Accessing the Admin Dashboard
+- **URL**: `https://rlab-drone-establish.egov.uni-koblenz.de/kc/admin/`
+- **Credentials**: `admin` / `admin` *(change these immediately in production!)*
+
+### Step 1: Create the Realm
+1. Click the realm dropdown (top-left) → **Create Realm**
+2. **Realm Name**: `deron-realm`
+3. Click **Create**
+
+### Step 2: Create the Client
+
+Go to **Clients** → **Create client**.
+
+**General Settings tab:**
+
+| Field | Value |
+|---|---|
+| **Client type** | OpenID Connect |
+| **Client ID** | `deron-bff` |
+
+Click **Next**.
+
+**Capability Config tab:**
+
+| Field | Value |
+|---|---|
+| **Client Authentication** | **ON** |
+| **Authorization** | **OFF** |
+| **Authentication flow** | ☑ Standard flow (check), uncheck all others |
+
+Click **Next**.
+
+**Login Settings tab:**
+
+> ⚠️ **IMPORTANT**: In production, Nginx proxies everything under the same domain. So unlike local development (where the BFF is on a different port), in production **all redirect URIs use the same base URL** `https://rlab-drone-establish.egov.uni-koblenz.de`. Make sure you type the full URLs including `https://` — do not accidentally cut off any characters when pasting.
+
+| Field | Value | Why |
+|---|---|---|
+| **Root URL** | `https://rlab-drone-establish.egov.uni-koblenz.de` | The production domain |
+| **Home URL** | `https://rlab-drone-establish.egov.uni-koblenz.de/` | Landing page |
+| **Valid redirect URIs** | `https://rlab-drone-establish.egov.uni-koblenz.de/auth/callback` | The BFF callback (proxied via Nginx `/auth/`) |
+| *(add another)* | `https://rlab-drone-establish.egov.uni-koblenz.de/*` | Wildcard fallback |
+| **Valid post logout redirect URIs** | `https://rlab-drone-establish.egov.uni-koblenz.de/*` | Where the browser goes after logout |
+| **Web origins** | `+` | Automatically allows CORS from redirect URI origins |
+
+Click **Save**.
+
+### Step 3: Enable PKCE
+
+After saving, go to the **Advanced** tab of the client:
+
+| Field | Value |
+|---|---|
+| **Proof Key for Code Exchange Code Challenge Method** | `S256` |
+
+Click **Save**.
+
+### Step 4: Copy the Client Secret
+Go to the **Credentials** tab → copy the **Client Secret**.
+
+Then follow [Production Deployment Guide — Step 4](#step-4-copy-the-client-secret-into-docker-composeprodyml) to paste it into `docker-compose.prod.yml` and restart the BFF.
+
+### Step 5: Create Users and Organizations
+1. Go to **Users** → **Add user** → create your production users
+2. Set passwords under the **Credentials** tab (turn off **Temporary**)
+3. (Optional) Go to **Organizations** → create `adminsop` → assign users
 
 ---
 
@@ -155,14 +382,15 @@ If you regenerate or change the Client Secret in the Keycloak Admin Dashboard, u
 
 ### In Local Development:
 1. Update `KEYCLOAK_CLIENT_SECRET` in `docker-compose.yml` (under `bff_app` environment variables).
-2. Restart the BFF container:
+2. Recreate the BFF container:
    ```bash
    docker compose up -d bff_app
    ```
 
 ### In Production (VM):
-1. Update `KEYCLOAK_CLIENT_SECRET` in `docker-compose.prod.yml` (under `bff_app` environment variables).
-2. Restart the production BFF container:
+1. SSH into the VM: `ssh vm-drone`
+2. Update `KEYCLOAK_CLIENT_SECRET` in `docker-compose.prod.yml` (under `bff_app` environment variables).
+3. Recreate the BFF container:
    ```bash
    docker compose -f docker-compose.prod.yml up -d bff_app
    ```
@@ -174,20 +402,20 @@ If you regenerate or change the Client Secret in the Keycloak Admin Dashboard, u
 ### Login Flow
 ```
 User clicks "Login with Keycloak" in Flutter Web
-  └─> Browser navigates to https://<DOMAIN>/auth/login
+  └─> Browser navigates to <DOMAIN>/auth/login
        └─> BFF generates PKCE code_challenge (S256) and stores verifier in temporary session cookie
-            └─> Browser redirected to Keycloak login page (https://<DOMAIN>/kc/realms/deron-realm/...)
+            └─> Browser redirected to Keycloak login page (<DOMAIN>/kc/realms/deron-realm/...)
                  └─> User logs in
-                      └─> Keycloak redirects browser to BFF callback: https://<DOMAIN>/auth/callback?code=XYZ
+                      └─> Keycloak redirects browser to BFF callback: <DOMAIN>/auth/callback?code=XYZ
                            └─> BFF exchanges authorization code for tokens via backchannel (http://keycloak:8080/...)
                                 └─> BFF generates opaque session_id and saves tokens + userinfo into PostgreSQL
                                      └─> BFF sets HTTP-only `bff_session_id` cookie
-                                          └─> Browser redirected to Flutter Web: https://<DOMAIN>/
+                                          └─> Browser redirected to Flutter Web: <DOMAIN>/
 ```
 
 ### Authenticated Request Flow
 ```
-Flutter Web makes API call: POST https://<DOMAIN>/api/v1/permissions/
+Flutter Web makes API call: POST <DOMAIN>/api/v1/permissions/
   └─> Browser automatically includes `bff_session_id` cookie
        └─> BFF looks up `bff_session_id` in PostgreSQL (`bff_sessions` table)
             └─> BFF checks token expiration (auto-refreshes via Keycloak if expired)
@@ -201,12 +429,12 @@ Flutter Web makes API call: POST https://<DOMAIN>/api/v1/permissions/
 ### Logout Flow
 ```
 User clicks "Logout" in Flutter Web
-  └─> Browser navigates to https://<DOMAIN>/auth/logout
+  └─> Browser navigates to <DOMAIN>/auth/logout
        └─> BFF deletes session row from PostgreSQL
             └─> BFF clears `bff_session_id` cookie
                  └─> BFF redirects browser to Keycloak logout URL (with id_token_hint)
                       └─> Keycloak revokes SSO session
-                           └─> Browser redirected back to Flutter Web (https://<DOMAIN>/)
+                           └─> Browser redirected back to Flutter Web (<DOMAIN>/)
 ```
 
 ---
@@ -282,7 +510,7 @@ The university project has 5 FastAPI backend repositories (`kiwi-backend-cost-ca
 To connect any new microservice to this BFF:
 
 ### Step 1: Add Security Verification to the Microservice
-Copy [permissions_app/app/security.py](file:///home/yaqoosh/Music/deron/permissions_app/app/security.py) into the microservice repo. Add `token_payload: dict = Depends(verify_token)` to any protected endpoint:
+Copy `permissions_app/app/security.py` into the microservice repo. Add `token_payload: dict = Depends(verify_token)` to any protected endpoint:
 
 ```python
 from app.security import verify_token
@@ -362,7 +590,7 @@ http.Client createHttpClient() {
 // POST request example
 final client = createHttpClient();
 final response = await client.post(
-  Uri.parse('https://api.kiwi.uni-koblenz.de/api/v1/permissions/'),
+  Uri.parse('https://rlab-drone-establish.egov.uni-koblenz.de/api/v1/permissions/'),
   headers: {
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest', // CSRF protection
